@@ -1,0 +1,56 @@
+name: 每日 GitHub Trending TOP 3
+
+on:
+  schedule:
+    # 每天 UTC 08:00（北京时间 16:00）执行
+    - cron: '0 8 * * *'
+  # 支持手动触发，方便调试
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  fetch-trending:
+    name: 获取今日 Star 增长 TOP 3
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout 仓库
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js 环境
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 运行数据获取脚本
+        run: node scripts/fetch-trending.js
+
+      - name: 提交并推送更新后的 trending/daily.md
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add trending/daily.md
+          # 如果没有变化则跳过提交
+          if git diff --cached --quiet; then
+            echo "trending/daily.md 无变化，跳过提交。"
+          else
+            git commit -m "chore: 更新每日 GitHub Trending TOP 3 [$(date -u '+%Y-%m-%d')]"
+            git push
+          fi
+
+      - name: 创建每日 Trending Issue（可选）
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TODAY=$(date -u '+%Y-%m-%d')
+          BODY=$(cat trending/daily.md)
+          # 若 trending 标签不存在则自动创建，避免 issue 创建失败
+          gh label create trending --color "e4e669" --description "每日 GitHub Trending 报告" 2>/dev/null || true
+          gh issue create \
+            --title "🔥 GitHub Trending TOP 3 - ${TODAY}" \
+            --body "${BODY}" \
+            --label "trending"
